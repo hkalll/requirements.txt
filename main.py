@@ -1,50 +1,57 @@
+import os
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, ReplyKeyboardRemove
-from telegram.ext import Application, CommandHandler, ConversationHandler, ContextTypes, MessageHandler, filters
+import httpx
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
-# --- Configuration ---
-BOT_TOKEN = "8688282898:AAGJR1kQ-2CPR29_QEC-LWmWkopEdqhFGBI" 
-GAME_BASE_URL = "http://fishmya.ugame.vn/"
+# Configuration
+BOT_TOKEN = "8688282898:AAGJR1kQ-2CPR29_QEC-LWmWkopEdqhFGBI"
+MYID_LOGIN_URL = "http://mytelsupperapp.mytel.com.mm/ReengBackendBiz/mytel/api/checkTokenAuth/v2"
 
 # States
-ASK_PHONE, ASK_PASSWORD, LOGGED_IN = range(3)
+ASK_PHONE, ASK_TOKEN = range(2)
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("MyID Game Bot မှ ကြိုဆိုပါတယ်။\nLogin ဝင်ရန် /login ကို နှိပ်ပါ။")
-    return ConversationHandler.END
+    await update.message.reply_text("MyID Automation Bot မှ ကြိုဆိုပါတယ်။\nစတင်ရန် /login ကို နှိပ်ပါ။")
 
 async def login_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("MyID ဖုန်းနံပါတ် ရိုက်ပါ။", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("MyID ဖုန်းနံပါတ် ရိုက်ထည့်ပါ (ဥပမာ - 09660377241)။")
     return ASK_PHONE
 
-async def ask_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["phone"] = update.message.text.strip()
-    await update.message.reply_text("Password ရိုက်ပါ။")
-    return ASK_PASSWORD
+async def ask_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['phone'] = update.message.text
+    await update.message.reply_text("သင့် Generator ကရတဲ့ Token (သို့မဟုတ်) OTP ကို ရိုက်ထည့်ပေးပါ။")
+    return ASK_TOKEN
 
-async def do_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    game_url = f"{GAME_BASE_URL}?uuid=demo&mcuid=demo&mcapp=myid"
-    kb = [[InlineKeyboardButton("Play Game 🎮", web_app=WebAppInfo(url=game_url))]]
-    await update.message.reply_text("Login အောင်မြင်ပါတယ်။", reply_markup=InlineKeyboardMarkup(kb))
-    return LOGGED_IN
+async def ask_token(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_token = update.message.text
+    phone = context.user_data['phone']
+    
+    await update.message.reply_text("Token ကို စစ်ဆေးပြီး Login ဝင်နေပါပြီ... ခဏစောင့်ပါ။")
+    
+    headers = {
+        "Host": "mytelsupperapp.mytel.com.mm",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "okhttp/4.9.1"
+    }
+    
+    # ပုံထဲကအတိုင်း Payload ပြင်ဆင်ခြင်း
+    payload = {
+        "clientType": "Android",
+        "platform": "myid",
+        "username": phone,
+        "thirdPartyToken": user_token,  # User ပေးတဲ့ Token ကို ဒီမှာသုံးမယ်
+        "revision": "16227"
+    }
 
-def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-    conv = ConversationHandler(
-        entry_points=[CommandHandler("login", login_start)],
-        states={
-            ASK_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_password)],
-            ASK_PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, do_login)],
-            LOGGED_IN: [MessageHandler(filters.ALL, login_start)]
-        },
-        fallbacks=[CommandHandler("start", start)]
-    )
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(conv)
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(MYID_LOGIN_URL, headers=headers, data=payload, timeout=20.0)
+            
+            if response.status_code == 200:
+                # Login အောင်မြင်ရင်
+                await update.message.reply_text("✅ Login အောင်မြင်ပါပြီ။\nယခုမှစ၍
 
